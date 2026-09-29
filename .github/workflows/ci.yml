@@ -1,0 +1,106 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (CP1–CP4)
+    runs-on: ubuntu-latest
+    env:
+      AGENT_API_KEY: ci-dummy
+      REDIS_URL: fake://
+      LOCAL_FALLBACK: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run checkpoint and workflow tests
+        # CP5 calls the live Railway service. The badge test is self-referential
+        # inside this workflow; run that final check after GitHub reports success.
+        run: >-
+          python -m pytest
+          tests/test_cp1.py
+          tests/test_cp2.py
+          tests/test_cp3.py
+          tests/test_cp4.py
+          tests/test_bonus_cicd.py
+          -k "not badge_bao_passing"
+
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build production image
+        run: docker build --tag day12-agent:ci .
+
+  deploy:
+    name: Deploy to Railway
+    needs: [test, build]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: 4d9b6030-4246-4742-9b70-87e843790a92
+      RAILWAY_SERVICE_ID: 3bfabf91-070e-4eb1-b413-998afa9fb054
+      RAILWAY_ENVIRONMENT: production
+      RAILWAY_PUBLIC_URL: https://k4-l3b-day12-ng-th-khanh-2a202602503-cloudservic-production.up.railway.app
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check deploy token is configured
+        run: |
+          if [[ -z "$RAILWAY_TOKEN" ]]; then
+            echo "::error::Add the Railway project token as the RAILWAY_TOKEN repository secret."
+            exit 1
+          fi
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Deploy the tested commit
+        run: >-
+          railway up
+          --project "$RAILWAY_PROJECT_ID"
+          --service "$RAILWAY_SERVICE_ID"
+          --environment "$RAILWAY_ENVIRONMENT"
+          --json
+
+      - name: Smoke test public health endpoint
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error "$RAILWAY_PUBLIC_URL/health"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::The Railway service did not become healthy within 120 seconds."
+          exit 1

@@ -10,17 +10,17 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Họ và tên | (điền họ tên) |
-| Mã học viên | (điền mã học viên) |
-| Repo | (điền link repo K4-L3B-DAY12-HoVaTen-MSSV-CloudServicesAndDeployment) |
+| Họ và tên | Ngô Thế Khanh |
+| Mã học viên | 2A202602503 |
+| Repo | https://github.com/khanhken159/K4-L3B-DAY12-Ng-Th-Khanh-2A202602503-CloudServicesAndDeployment |
 
 ## Service
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | https://TODO-thay-bang-url-that.up.railway.app |
-| Platform | Railway / Render / Cloud Run — (điền platform bạn dùng) |
-| Ngày deploy | (điền ngày) |
+| Public URL | https://k4-l3b-day12-ng-th-khanh-2a202602503-cloudservic-production.up.railway.app |
+| Platform | Railway |
+| Ngày deploy | 2026-09-29 |
 
 ## Biến Môi Trường Đã Set Trên Cloud
 
@@ -28,12 +28,34 @@ Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 
 | Biến | Đã set | Ghi chú |
 |------|--------|---------|
-| `PORT` | ✅ | platform tự gán |
-| `AGENT_API_KEY` | ✅ | đặt trong dashboard, không nằm trong repo |
-| `REDIS_URL` | ✅ | (điền: Redis add-on của platform / Upstash / ...) |
-| `RATE_LIMIT_PER_MINUTE` | ✅ | 10 |
-| `MONTHLY_BUDGET_USD` | ✅ | 10.0 |
-| `LOG_LEVEL` | ✅ | INFO |
+| `PORT` | ✅ | Railway tự cấp |
+| `AGENT_API_KEY` | ✅ | đặt trong Variables của app; không ghi giá trị vào repo |
+| `REDIS_URL` | ✅ | tham chiếu `REDIS_URL` từ dịch vụ Redis trên Railway |
+| `RATE_LIMIT_PER_MINUTE` | Mặc định | 10 trong cấu hình app |
+| `MONTHLY_BUDGET_USD` | Mặc định | 10.0 trong cấu hình app |
+| `LOG_LEVEL` | Mặc định | INFO trong cấu hình app |
+
+## Bonus — CI/CD GitHub Actions
+
+Workflow `.github/workflows/ci.yml` chạy CP1–CP4 và build Docker image trên cả
+push lên `main` lẫn pull request vào `main`. CP5 bị loại khỏi CI vì nó gọi
+Railway thật; bài kiểm tra badge được chạy sau khi workflow đã hoàn tất để
+tránh tự tham chiếu. Job deploy phụ thuộc cả job test và build, chỉ chạy với
+push vào `main`.
+
+Để bật job deploy:
+
+1. Tạo Railway **Project Token** và lưu thành GitHub repository secret
+   `RAILWAY_TOKEN` (Settings → Secrets and variables → Actions).
+2. Thêm repository variable `RAILWAY_DEPLOY_ENABLED` với giá trị `true`.
+3. Vì Railway service hiện cũng liên kết trực tiếp với GitHub, tắt
+   **automatic deployments** của Railway để tránh deploy trùng. Sau đó job
+   deploy trong workflow là đường deploy duy nhất.
+
+Workflow gọi Railway CLI bằng token secret, triển khai đúng project/service,
+rồi gọi `/health` để xác nhận service đã lên. Token không nằm trong repository.
+Hướng dẫn chính thức: [Railway CLI](https://docs.railway.com/cli) và
+[điều khiển GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys).
 
 ## Lệnh Kiểm Tra
 
@@ -43,7 +65,7 @@ Thay `<URL>` bằng Public URL ở trên:
 # 1. Liveness — mong đợi 200 {"status":"ok"}
 curl -i <URL>/health
 
-# 2. Readiness — mong đợi 200 {"status":"ready"} (đã nối được Redis)
+# 2. Readiness — mong đợi 200 {"status":"ready","redis":true}
 curl -i <URL>/ready
 
 # 3. Không có API key — mong đợi 401
@@ -68,13 +90,18 @@ for i in $(seq 1 15); do
 done; echo
 ```
 
-## Kết Quả Chạy Thật
-
-Dán output của các lệnh trên vào đây:
+## Kết Quả Chạy Thật — 2026-09-29
 
 ```
-(điền output)
+GET /health → 200 {"status":"ok","service":"day12-agent","version":"1.0.0"}
+GET /ready  → 200 {"status":"ready","redis":true}
+POST /ask không có API key → 401
+pytest tests/test_cp5.py -v → 9 passed, 4 skipped (4 test local fallback không áp dụng)
 ```
+
+Lần deploy đầu từng crash lúc khởi động do `NotImplementedError: TODO (CP4): cài đặt`
+trong phần cài handler tắt tiến trình. CP4 đã được hoàn thiện, sau đó Railway
+hiển thị deployment `ACTIVE` và service `Online`.
 
 ## Ảnh Chụp Màn Hình
 
@@ -82,6 +109,7 @@ Dán output của các lệnh trên vào đây:
 
 - `screenshots/dashboard.png` — trang quản lý service trên platform
 - `screenshots/health.png` — kết quả gọi `/health` từ trình duyệt hoặc curl
+- `screenshots/ready.png` — kết quả `/ready`, xác nhận Redis đã kết nối
 
 ---
 
@@ -97,5 +125,5 @@ Không đăng ký được tài khoản cloud? Vẫn nộp được bài, nhưng
 5. Ghi rõ lý do không deploy được vào phần dưới đây:
 
 ```
-(điền lý do nếu dùng phương án dự phòng, ngược lại xóa mục này)
+Không dùng phương án dự phòng; service được triển khai trên Railway.
 ```
